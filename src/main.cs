@@ -8,18 +8,27 @@ var server = new TcpListener(IPAddress.Any, 9092);
 server.Start();
 var socket = server.AcceptSocket();
 var buffer = new Span<byte>(new byte[1024]);
-var bytesRead = socket.Receive(buffer);
+socket.Receive(buffer);
 var request = KafkaRequest.FromSpan(buffer);
-// var reader = new BinaryReader(new MemoryStream(buffer, 0, bytesRead));
-// var messageSize = reader.ReadInt32();
-// var correlationId = reader.ReadInt32();
-Console.WriteLine($"request: {request}");
 
-var response = new KafkaResponse<ApiVersionsBody>(
-    0, 
-    new ResponseHeader(request.Header.CorrelationId), 
-    new ApiVersionsBody(ErrorCode.UnsupportedVersion));
+Console.WriteLine($"Request: {request}");
 
-Console.WriteLine($"response: {response}");
+var isApiVersionSupported = request.Header.ApiKeyVersion is <= 0 or > 4;
 
-socket.Send(response.ToSpan());
+var response = isApiVersionSupported 
+    ? new KafkaResponse<ApiVersionsBody>(
+        new ResponseHeader(request.Header.CorrelationId),
+        new ApiVersionsBody(ErrorCode.UnsupportedVersion, []))
+    : new KafkaResponse<ApiVersionsBody>(
+        new ResponseHeader(request.Header.CorrelationId),
+        new ApiVersionsBody(ErrorCode.None, [
+            new ApiVersion(ApiKey.ApiVersions, 1, 4),
+        ]));
+
+Console.WriteLine($"Response: {response}");
+
+var sendBytes = socket.Send(response.ToSpan());
+
+Console.WriteLine($"Response of '{sendBytes}' bytes was sent!");
+
+socket.Close();
