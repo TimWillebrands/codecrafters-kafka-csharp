@@ -14,7 +14,7 @@ var request = KafkaResponse.FromSpan(buffer);
 // var reader = new BinaryReader(new MemoryStream(buffer, 0, bytesRead));
 // var messageSize = reader.ReadInt32();
 // var correlationId = reader.ReadInt32();
-Console.WriteLine($"request: {requestt }");
+Console.WriteLine($"request: {request}");
 
 var response = new KafkaResponse(0, new Header(7));
 Console.WriteLine($"response: {response}");
