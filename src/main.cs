@@ -5,6 +5,6 @@ using System.Net.Sockets;
 Console.WriteLine("Logs from your program will appear here!");
 
 // Uncomment this block to pass the first stage
-// TcpListener server = new TcpListener(IPAddress.Any, 9092);
-// server.Start();
-// server.AcceptSocket(); // wait for client
+var server = new TcpListener(IPAddress.Any, 9092);
+server.Start();
+server.AcceptSocket(); // wait for client
