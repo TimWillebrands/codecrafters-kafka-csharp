@@ -13,20 +13,18 @@ internal readonly record struct KafkaResponse<TBody>(ResponseHeader ResponseHead
 {
     public ReadOnlySpan<byte> ToSpan()
     {
+        using var stream = new MemoryStream();
         var bodySpan = Body.ToSpan();
         
         var sizeHeader = Marshal.SizeOf<ResponseHeader>();
         var sizeBody = bodySpan.Length;
         var messageSize = sizeHeader + sizeBody;
-            
-        var span = new Span<byte>(new byte[messageSize + sizeof(int)]);
         
-        BinaryPrimitives.WriteInt32BigEndian(span[..4], messageSize);
-        BinaryPrimitives.WriteInt32BigEndian(span[4..8], ResponseHeader.CorrelationId);
+        stream.Put(messageSize)
+            .Put(ResponseHeader.CorrelationId)
+            .Write(bodySpan);
         
-        bodySpan.CopyTo(span[8..]);
-
-        return span;
+        return stream.ToArray();
     }
 }
 
@@ -39,31 +37,18 @@ internal readonly record struct ApiVersionsBody(
 {
     public ReadOnlySpan<byte> ToSpan()
     {
-        const int size = 3 * sizeof(short) + 1;
+        using var stream = new MemoryStream();
+        stream.Put((short)ErrorCode).Put((byte)(ApiVersions.Length + 1));
         
-        var messageSize = 
-            sizeof(ErrorCode) 
-            + 1 // This is num_of_api_keys in the test... I can't find it in the spec 
-            + ApiVersions.Length*size
-            + sizeof(int) // throttle time ms
-            + 1; // tag buffer
-        var result = new Span<byte>(new byte[messageSize]);
-        
-        BinaryPrimitives.WriteInt16BigEndian(result[..2], (short)ErrorCode); // error_code
-        result[2] = (byte) (ApiVersions.Length + 1);
-        for (var av = 0; av < ApiVersions.Length; av++)
+        foreach (var av in ApiVersions)
         {
-            var i = 3 + av * size;
-            BinaryPrimitives.WriteInt16BigEndian(result[(i+0)..(i+2)], (short)ApiVersions[av].ApiKey);
-            BinaryPrimitives.WriteInt16BigEndian(result[(i+2)..(i+4)], ApiVersions[av].MinVersion);
-            BinaryPrimitives.WriteInt16BigEndian(result[(i+4)..(i+6)], ApiVersions[av].MaxVersion);
-            result[i + 6] = 0; // TAG BUFFER of this api_key 
+            stream.Put((short)av.ApiKey).Put(av.MinVersion).Put(av.MaxVersion)
+                .Put((byte)0); // TAG BUFFER of this api_key 
         }
 
-        BinaryPrimitives.WriteInt32BigEndian(result[^5..^1], 0); // throttle time ms
-        result[^1] = 0; // TAG BUFFER of the api-keys body
+        stream.Put(0).Put((byte)0); // throttle time ms + TAG BUFFER of the api-keys body
         
-        return result;
+        return stream.ToArray();
     }
 }
 
