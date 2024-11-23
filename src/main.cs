@@ -16,7 +16,7 @@ try
 {
     server.Start();
     Console.WriteLine("Server started. Press Ctrl+C to stop.");
-    
+
     while (!cts.Token.IsCancellationRequested)
     {
         var client = await server.AcceptTcpClientAsync(cts.Token);
@@ -27,6 +27,10 @@ try
             client.Dispose();
         });
     }
+}
+catch (OperationCanceledException)
+{
+    Console.WriteLine("Server stopped.");
 }
 finally
 {
@@ -55,7 +59,8 @@ static async Task HandleClientAsync(TcpClient client, CancellationToken ct)
             : new KafkaResponse<ApiVersionsBody>(
                 new ResponseHeader(request.Header.CorrelationId),
                 new ApiVersionsBody(ErrorCode.None, [
-                    new ApiVersion(ApiKey.ApiVersions, 1, 4),
+                    new ApiVersion(ApiKey.ApiVersions, 0, 4),
+                    new ApiVersion(ApiKey.DescribeTopicPartitions, 0, 0),
                 ]));
 
         Console.WriteLine($"Response: {response}");
