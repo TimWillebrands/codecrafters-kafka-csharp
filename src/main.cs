@@ -15,7 +15,11 @@ var request = KafkaRequest.FromSpan(buffer);
 // var correlationId = reader.ReadInt32();
 Console.WriteLine($"request: {request}");
 
-var response = new KafkaResponse(0, new Header(request.Header.CorrelationId));
+var response = new KafkaResponse<ApiVersionsBody>(
+    0, 
+    new ResponseHeader(request.Header.CorrelationId), 
+    new ApiVersionsBody(ErrorCode.UnsupportedVersion));
+
 Console.WriteLine($"response: {response}");
 
 socket.Send(response.ToSpan());
