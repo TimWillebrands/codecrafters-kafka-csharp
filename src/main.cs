@@ -9,8 +9,8 @@ var server = new TcpListener(IPAddress.Any, 9092);
 server.Start();
 var socket = server.AcceptSocket(); // wait for client
 
-var buffer = new Memory<byte>();
-await socket.ReceiveAsync(buffer);
+var buffer = new Span<byte>();
+socket.Receive(buffer);
 
 Console.WriteLine($"Request buffer: {string.Join(',', buffer.ToArray())}");
 
