@@ -4,31 +4,54 @@ using CodecraftersKafka;
 
 Console.WriteLine("Logs from your program will appear here!");
 var server = new TcpListener(IPAddress.Any, 9092);
+var cancellationTokenSource = new CancellationTokenSource();
 
-server.Start();
-var socket = server.AcceptSocket();
-var buffer = new Span<byte>(new byte[1024]);
-socket.Receive(buffer);
-var request = KafkaRequest.FromSpan(buffer);
+try
+{
+    server.Start();
+    var socket = server.AcceptSocket();
+    Console.WriteLine("Server started. Press Ctrl+C to stop.");
 
-Console.WriteLine($"Request: {request}");
+    var i = 1;
 
-var isApiVersionSupported = request.Header.ApiKeyVersion is <= 0 or > 4;
+    Console.CancelKeyPress += (sender, e) =>
+    {
+        e.Cancel = true;
+        cancellationTokenSource.Cancel();
+    };
 
-var response = isApiVersionSupported 
-    ? new KafkaResponse<ApiVersionsBody>(
-        new ResponseHeader(request.Header.CorrelationId),
-        new ApiVersionsBody(ErrorCode.UnsupportedVersion, []))
-    : new KafkaResponse<ApiVersionsBody>(
-        new ResponseHeader(request.Header.CorrelationId),
-        new ApiVersionsBody(ErrorCode.None, [
-            new ApiVersion(ApiKey.ApiVersions, 1, 4),
-        ]));
+    while (!cancellationTokenSource.Token.IsCancellationRequested)
+    {
+        var buffer = new Span<byte>(new byte[1024]);
+        socket.Receive(buffer);
+        var request = KafkaRequest.FromSpan(buffer);
 
-Console.WriteLine($"Response: {response}");
+        Console.WriteLine($"{i} - Request: {request}");
 
-var sendBytes = socket.Send(response.ToSpan());
+        var isApiVersionSupported = request.Header.ApiKeyVersion is <= 0 or > 4;
 
-Console.WriteLine($"Response of '{sendBytes}' bytes was sent!");
+        var response = isApiVersionSupported
+            ? new KafkaResponse<ApiVersionsBody>(
+                new ResponseHeader(request.Header.CorrelationId),
+                new ApiVersionsBody(ErrorCode.UnsupportedVersion, []))
+            : new KafkaResponse<ApiVersionsBody>(
+                new ResponseHeader(request.Header.CorrelationId),
+                new ApiVersionsBody(ErrorCode.None, [
+                    new ApiVersion(ApiKey.ApiVersions, 1, 4),
+                ]));
 
-socket.Close();
+        Console.WriteLine($"{i} - Response: {response}");
+
+        var sendBytes = socket.Send(response.ToSpan());
+
+        Console.WriteLine($"{i} - Response of '{sendBytes}' bytes was sent!");
+        
+        i++;
+    }
+}
+finally
+{
+    server.Stop();
+    server.Dispose();
+    Console.WriteLine("Server stopped.");
+}

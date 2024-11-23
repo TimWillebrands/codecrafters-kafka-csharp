@@ -37,7 +37,8 @@ internal readonly record struct ApiVersionsBody(
     public ReadOnlySpan<byte> ToSpan()
     {
         using var stream = new MemoryStream();
-        stream.Put((short)ErrorCode).Put((byte)(ApiVersions.Length + 1));
+        stream.Put((short)ErrorCode)
+            .Put((byte)(ApiVersions.Length + 1)); // num_api_keys in test, can't find it in spec.
         
         foreach (var av in ApiVersions)
         {
