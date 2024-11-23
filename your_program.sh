@@ -21,4 +21,5 @@ set -e # Exit early if any commands fail
 #
 # - Edit this to change how your program runs locally
 # - Edit .codecrafters/run.sh to change how your program runs remotely
+export DOTNET_ROOT="/usr/share/dotnet"
 exec /tmp/codecrafters-build-csharp/codecrafters-kafka "$@"
