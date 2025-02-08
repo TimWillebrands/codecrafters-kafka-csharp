@@ -75,11 +75,11 @@ internal readonly record struct DescribeTopicPartitionsBody(
     {
         using var stream = new MemoryStream();
 
-        var reqNameBytes = Request.Topics[0];
+        var reqNameBytes = Request.Topics;
 
         var topics = MetadataLog.Batches.SelectMany(batch => batch.Records)
             .Where(record => record.RecordValue.Type == ClusterMetadataLog.RecordValueType.Topic
-                && record.RecordValue.Topic.Name.Span.SequenceEqual(reqNameBytes.Span))
+                && reqNameBytes.Any(topic => record.RecordValue.Topic.Name.Span.SequenceEqual(topic.Span)))
             .ToArray();
         
         // We're branching here in order to keep passing the previous test-cases
