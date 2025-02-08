@@ -67,7 +67,7 @@ internal readonly record struct DescribeTopicPartitionsReqBody : IKafkaRequest
         var offset = 0;
         ClientId = ParseUtils.GetStr(buffer, ref offset, 2);
         offset++; // TAG_BUFER
-        var topicsLen = buffer.Span[offset++];
+        var topicsLen = VarintDecoder.ReadUnsignedVarint(buffer.Span, ref offset);
         Topics = new ReadOnlyMemory<byte>[topicsLen - 1];
         for (var i = 0; i < Topics.Length; i++)
         {

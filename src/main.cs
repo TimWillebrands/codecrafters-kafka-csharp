@@ -7,6 +7,7 @@ Console.WriteLine("Logs from your program will appear here!");
 var server = new TcpListener(IPAddress.Any, 9092);
 var cts = new CancellationTokenSource();
 
+
 Console.CancelKeyPress += (sender, e) =>
 {
     e.Cancel = true;
@@ -21,7 +22,7 @@ try
     while (!cts.Token.IsCancellationRequested)
     {
         var client = await server.AcceptTcpClientAsync(cts.Token);
-        _ = HandleClientAsync(client, cts.Token).ContinueWith(task =>
+        _ = Main.HandleClientAsync(client, cts.Token).ContinueWith(task =>
         {
             if (task.IsFaulted)
                 Console.WriteLine($"Client error: {task.Exception}");
@@ -37,56 +38,62 @@ finally
 {
     server.Stop();
 }
-static async Task HandleClientAsync(TcpClient client, CancellationToken ct)
+
+internal class Main
 {
-    await using var stream = client.GetStream();
-    var pool = ArrayPool<byte>.Shared;
-    
-    while (!ct.IsCancellationRequested)
+    private static ClusterMetadataLog ClusterMetadata = new ();
+
+    internal static async Task HandleClientAsync(TcpClient client, CancellationToken ct)
     {
-        var buffer = pool.Rent(1024);
-        try
+        await using var stream = client.GetStream();
+        var pool = ArrayPool<byte>.Shared;
+
+        while (!ct.IsCancellationRequested)
         {
-            var received = await stream.ReadAsync(buffer, ct);
-            if (received == 0) break; // Client disconnected
-
-            var request = Request.FromSpan(new ArraySegment<byte>(buffer, 0, received));
-
-            Console.WriteLine($"Request: {request}");
-
-            var isApiVersionUnsupported = request.Header.ApiKeyVersion is <= 0 or > 4;
-
-            IKafkaResponse response = request switch
+            var buffer = pool.Rent(1024);
+            try
             {
-                ApiVersionsReqBody =>
-                    isApiVersionUnsupported
-                        ? new KafkaResponse<ApiVersionsBody>(
-                            new ResponseHeader(request.Header.CorrelationId),
-                            new ApiVersionsBody(ErrorCode.UnsupportedVersion, []))
-                        : new KafkaResponse<ApiVersionsBody>(
-                            new ResponseHeader(request.Header.CorrelationId),
-                            new ApiVersionsBody(ErrorCode.None, [
-                                new ApiVersion(ApiKey.ApiVersions, 0, 4),
-                                new ApiVersion(ApiKey.DescribeTopicPartitions, 0, 0),
-                            ])),
-                DescribeTopicPartitionsReqBody req =>
-                    new KafkaResponse<DescribeTopicPartitionsBody>(
-                        new ResponseHeader(req.Header.CorrelationId),
-                        new DescribeTopicPartitionsBody(req)),
-                _ => throw new ArgumentOutOfRangeException($"We dont support {request.Header.ApiKey}")
-            };
+                var received = await stream.ReadAsync(buffer, ct);
+                if (received == 0) break; // Client disconnected
 
-            Console.WriteLine($"Response: {response}");
+                var request = Request.FromSpan(new ArraySegment<byte>(buffer, 0, received));
 
-            await stream.WriteAsync(response.ToSpan().ToArray(), ct);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
-        }
-        finally
-        {
-            pool.Return(buffer);
+                Console.WriteLine($"Request: {request}");
+
+                var isApiVersionUnsupported = request.Header.ApiKeyVersion is <= 0 or > 4;
+
+                IKafkaResponse response = request switch
+                {
+                    ApiVersionsReqBody =>
+                        isApiVersionUnsupported
+                            ? new KafkaResponse<ApiVersionsBody>(
+                                new ResponseHeader(request.Header.CorrelationId),
+                                new ApiVersionsBody(ErrorCode.UnsupportedVersion, []))
+                            : new KafkaResponse<ApiVersionsBody>(
+                                new ResponseHeader(request.Header.CorrelationId),
+                                new ApiVersionsBody(ErrorCode.None, [
+                                    new ApiVersion(ApiKey.ApiVersions, 0, 4),
+                                    new ApiVersion(ApiKey.DescribeTopicPartitions, 0, 0),
+                                ])),
+                    DescribeTopicPartitionsReqBody req =>
+                        new KafkaResponse<DescribeTopicPartitionsBody>(
+                            new ResponseHeader(req.Header.CorrelationId),
+                            new DescribeTopicPartitionsBody(req, ClusterMetadata)),
+                    _ => throw new ArgumentOutOfRangeException($"We dont support {request.Header.ApiKey}")
+                };
+
+                Console.WriteLine($"Response: {response}");
+
+                await stream.WriteAsync(response.ToSpan().ToArray(), ct);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+            finally
+            {
+                pool.Return(buffer);
+            }
         }
     }
 }

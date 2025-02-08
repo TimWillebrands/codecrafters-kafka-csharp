@@ -35,4 +35,20 @@ internal static class Extensions
         ms.WriteByte(value);   
         return ms;
     }
+    
+    internal static MemoryStream PutArray(this MemoryStream ms, ReadOnlyMemory<byte> value)
+    {
+        ms.Put(value.Length);
+        foreach (var b in value.Span)
+        {
+            ms.WriteByte(b);   
+        }
+        return ms;
+    }
+    
+    internal static MemoryStream Put(this MemoryStream ms, ReadOnlyMemory<byte> value)
+    {
+        ms.Write(value.Span);   
+        return ms;
+    }
 }
