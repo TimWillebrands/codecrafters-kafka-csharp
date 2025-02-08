@@ -101,7 +101,7 @@ internal static class ParseUtils {
         }; // -1 because varint, thus 0 is null
         var str = buffer[offset..(offset += len)];
         
-        // Console.WriteLine($"[str] {len} - '{Encoding.UTF8.GetString(str.Span)}' - {string.Join(',', str.Span.ToArray())}");
+        Console.WriteLine($"[str] {len} - '{Encoding.UTF8.GetString(str.Span)}' - {string.Join(',', str.Span.ToArray())}");
         return str;
     }
 }

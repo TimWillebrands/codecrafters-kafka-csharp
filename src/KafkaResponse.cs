@@ -82,16 +82,17 @@ internal readonly record struct DescribeTopicPartitionsBody(
                 && record.RecordValue.Topic.Name.Span.SequenceEqual(reqNameBytes.Span))
             .ToArray();
         
-        Console.WriteLine($"Topics {topics.Length}: {string.Join(", ", topics)}");
+        // We're branching here in order to keep passing the previous test-cases
+        // which just mirrored the requests. 
+        var topicLength = topics.Length == 0 ? 1 : topics.Length;
+        Console.WriteLine($"Topics {topics.Length} ({topicLength}): {string.Join(", ", topics)}");
 
         stream.Put((byte)0) // Suddenly the header has a TAG_BUFFER?
-            .Put(2) // Throttle time
-            .Put((byte)(topics.Length + 1)); // Array length (1)
+            .Put(0) // Throttle time
+            .Put(VarintDecoder.EncodeUnsignedVarint(topicLength + 1)); // Array length (1)
         
         var errorCode = topics.Length != 0 ? ErrorCode.None : ErrorCode.UnknownTopicOrPartition;
 
-        // We're branching here in order to keep passing the previous test-cases
-        // which just mirrored the requests. 
         if (topics.Length != 0)
         {
             foreach (var topic in topics)
@@ -102,11 +103,10 @@ internal readonly record struct DescribeTopicPartitionsBody(
         }
         else
         {
-            WriteTopicToRequest(stream, errorCode, Request.Topics[0], Guid.Empty.ToByteArray());
+            WriteTopicToRequest(stream, errorCode, Guid.Empty.ToByteArray(),Request.Topics[0]);
         }
 
-        stream.Put(0x00000df8) // Topic authorised ops
-            .Put((byte)0) // Damned TAG_BUFFER
+        stream
             .Put((byte)0xff) // Next Cursor
             .Put((byte)0); // Damned TAG_BUFFER
         
@@ -127,7 +127,7 @@ internal readonly record struct DescribeTopicPartitionsBody(
             
         stream
             .Put((short)errorCode)
-            .Put((byte)(topicName.Length + 1)); // Lenght of topicname + 1, as 0 means null
+            .Put(VarintDecoder.EncodeUnsignedVarint(topicName.Length + 1)); // Lenght of topicname + 1, as 0 means null
         
         stream.Write(topicName.Span); // Topic name
         stream.Write(topicUuid.Span); // Topic Uuid
@@ -142,15 +142,21 @@ internal readonly record struct DescribeTopicPartitionsBody(
         {
             var partitionRec = partition.RecordValue.Partition;
             Console.WriteLine($"Partition-{partId++}: {partitionRec.ToString()}");
+            Console.WriteLine($"Replica nodes: {string.Join(',',partitionRec.ReplicaNodes)}");
             stream.Put((short)ErrorCode.None) // Errorcode
                 .Put(partitionRec.PartitionId) // Partition Index
                 .Put(partitionRec.Leader) // Leader ID
                 .Put(partitionRec.LeaderEpoch) // Leader epoch
-                .PutArray(partitionRec.ReplicaNodes) // Replica nodes
-                .PutArray(partitionRec.InSync) // InSync nodes
-                .PutArray(partitionRec.AddingReplicas) // ELR nodes
-                .PutArray(partitionRec.RemovingReplicas) // offline nodes 
+                .PutCompactArray(partitionRec.ReplicaNodes) // Replica nodes TODO: I think we're reading this thing wrong?
+                .PutCompactArray(partitionRec.InSync) // InSync nodes
+                .PutCompactArray(partitionRec.AddingReplicas) // ELR nodes
+                .PutCompactArray(partitionRec.AddingReplicas) // last_known_elr 
+                .PutCompactArray(partitionRec.RemovingReplicas) // offline nodes 
                 .Put((byte)0); // Damned TAG_BUFFER
         }
+
+        stream
+            .Put(0x00000df8) // Topic authorised ops
+            .Put((byte)0); // Damned TAG_BUFFER
     }
 }

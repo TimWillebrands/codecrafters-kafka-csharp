@@ -76,4 +76,21 @@ public static class VarintDecoder
     {
         return new InvalidOperationException($"Illegal varint value: {result}");
     }
+    
+    public static byte[] EncodeUnsignedVarint(int value)
+    {
+        if (value < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "Value must be non-negative for UNSIGNED_VARINT.");
+        }
+
+        var bytes = new List<byte>();
+        while (value >= 128)
+        {
+            bytes.Add((byte)((value & 0x7F) | 0x80)); // Take lower 7 bits and set MSB to indicate more bytes
+            value >>= 7; // Right shift by 7 bits
+        }
+        bytes.Add((byte)value); // Last byte, no MSB set
+        return bytes.ToArray();
+    }
 }

@@ -124,6 +124,18 @@ internal record ClusterMetadataLog
             return (name, uuid);
         }}
 
+        // TODO: -1 for empty or null arrays?
+        internal ReadOnlyMemory<byte> ReadCompactArray(ref int offset)
+        {
+            var (varintValue, length) = VarintDecoder.ReadUnsignedVarint(memory.Span[offset..] );
+            varintValue -= 1;  // Compact Array, so it's length is the deserialised varint value -1
+            if (varintValue < 0)
+            {
+                return Array.Empty<byte>();
+            }
+            return memory[(offset+length)..(offset += (length + varintValue))];
+        }
+
         internal PartitionRecord Partition { 
             get  {
                 if(Type != RecordValueType.Partition) throw new InvalidOperationException();
@@ -132,31 +144,22 @@ internal record ClusterMetadataLog
                 var partitionId = ReadInt32(memory, ref offset);
                 var uuid = memory[offset..(offset += 16)];
             
-                var (repLen, repLenVarBytes) = VarintDecoder.ReadUnsignedVarint(memory.Span[offset..] );
-                repLen -= 1;  // Compact Array so -1
-                var replicaArr = memory[offset..(offset += repLen + repLenVarBytes)];
-            
-                var (syncLen, syncLenVarBytes) = VarintDecoder.ReadUnsignedVarint(memory.Span[offset..] );
-                syncLen -= 1;
-                var inSyncArr = memory[offset..(offset += syncLen + syncLenVarBytes)];
-            
-                var (remRepLen, remRepLenVarBytes) = VarintDecoder.ReadUnsignedVarint(memory.Span[offset..] );
-                remRepLen -= 1;
-                var remRepArr = memory[offset..(offset += remRepLen + remRepLenVarBytes)];
-            
-                var (addRepLen, addRepLenVarBytes) = VarintDecoder.ReadUnsignedVarint(memory.Span[offset..] );
-                addRepLen -= 1;  // Compact Array so -1
-                var addRepArr = memory[offset..(offset += addRepLen + addRepLenVarBytes)];
-            
+                    var a = ReadInt32(memory, ref offset);
+                    var b = ReadInt32(memory, ref offset);
+                    var c = ReadCompactArray(ref offset);
+                    var d = ReadCompactArray(ref offset);
+                    var e = ReadCompactArray(ref offset);
+                    var f = ReadCompactArray(ref offset);
                 return new PartitionRecord(
                     partitionId,
                     uuid,
-                    ReadInt32(memory, ref offset),
-                    ReadInt32(memory, ref offset),
-                    replicaArr,
-                    inSyncArr,
-                    addRepArr,
-                    remRepArr );
+                    a,
+                    b,
+                    c,
+                    d,
+                    e,
+                    f
+                    );
             }
         }
     }

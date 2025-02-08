@@ -36,13 +36,11 @@ internal static class Extensions
         return ms;
     }
     
-    internal static MemoryStream PutArray(this MemoryStream ms, ReadOnlyMemory<byte> value)
+    internal static MemoryStream PutCompactArray(this MemoryStream ms, ReadOnlyMemory<byte> value)
     {
-        ms.Put(value.Length);
-        foreach (var b in value.Span)
-        {
-            ms.WriteByte(b);   
-        }
+        ms
+            .Put(VarintDecoder.EncodeUnsignedVarint(value.Length)) // Length of compact arr is an unsigned-varint
+            .Put(value);
         return ms;
     }
     
