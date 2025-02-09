@@ -26,7 +26,8 @@ internal readonly record struct KafkaResponse<TBody>(ResponseHeader ResponseHead
         var sizeBody = bodySpan.Length;
         var messageSize = sizeHeader + sizeBody;
         
-        stream.Put(messageSize)
+        stream
+            .Put(messageSize)
             .Put(ResponseHeader.CorrelationId)
             .Write(bodySpan);
         
@@ -79,7 +80,8 @@ internal readonly record struct DescribeTopicPartitionsBody(
 
         var topics = MetadataLog.Batches.SelectMany(batch => batch.Records)
             .Where(record => record.RecordValue.Type == ClusterMetadataLog.RecordValueType.Topic
-                && reqNameBytes.Any(topic => record.RecordValue.Topic.Name.Span.SequenceEqual(topic.Span)))
+                && reqNameBytes.Any(topic => 
+                    record.RecordValue.Topic.Name.Span.SequenceEqual(topic.Span)))
             .ToArray();
         
         // We're branching here in order to keep passing the previous test-cases
@@ -158,5 +160,20 @@ internal readonly record struct DescribeTopicPartitionsBody(
         stream
             .Put(0x00000df8) // Topic authorised ops
             .Put((byte)0); // Damned TAG_BUFFER
+    }
+}
+internal readonly record struct FetchBody(
+    FetchReqBody Request) : IResponseBody
+{
+    public ReadOnlySpan<byte> ToSpan()
+    {
+        using var stream = new MemoryStream();
+        stream
+            .Put(0) // Throttle time
+            .Put((short)ErrorCode.None) // Error code
+            .Put(0) // Session id
+            .Put(VarintDecoder.EncodeUnsignedVarint(1)); // responses Array length (0)
+        
+        return stream.ToArray();
     }
 }

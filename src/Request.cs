@@ -33,6 +33,7 @@ internal static class Request
             ApiKey.ApiVersions => new ApiVersionsReqBody(messageSize, header),
             ApiKey.DescribeTopicPartitions => 
                 new DescribeTopicPartitionsReqBody(messageSize, header, buffer[12..]),
+            ApiKey.Fetch => new FetchReqBody(messageSize, header, buffer[12..]),
             _ => throw new NotImplementedException($"Unknown API key: {apiKey}"),
         };
     }
@@ -88,6 +89,15 @@ internal readonly record struct DescribeTopicPartitionsReqBody : IKafkaRequest
     public ReadOnlyMemory<byte>[] Topics { get; }
     public int ResponsePartitionLimit { get; }
     public byte Cursor { get; }
+}
+
+internal readonly record struct FetchReqBody(
+    int MessageSize, 
+    RequestHeader Header, 
+    ReadOnlyMemory<byte> ReadOnlyMemory) : IKafkaRequest
+{
+    public int MessageSize { get; }
+    public RequestHeader Header { get; }
 }
 
 internal static class ParseUtils {
