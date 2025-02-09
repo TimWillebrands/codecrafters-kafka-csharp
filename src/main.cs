@@ -83,7 +83,7 @@ internal class Main
                     FetchReqBody req =>
                         new KafkaResponse<FetchBody>(
                             new ResponseHeader(req.Header.CorrelationId),
-                            new FetchBody(req)),
+                            new FetchBody(req, ClusterMetadata)),
                     _ => throw new ArgumentOutOfRangeException($"We dont support {request.Header.ApiKey}")
                 };
 

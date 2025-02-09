@@ -163,7 +163,8 @@ internal readonly record struct DescribeTopicPartitionsBody(
     }
 }
 internal readonly record struct FetchBody(
-    FetchReqBody Request) : IResponseBody
+    FetchReqBody Request,
+    ClusterMetadataLog MetadataLog) : IResponseBody
 {
     public ReadOnlySpan<byte> ToSpan()
     {
@@ -173,9 +174,67 @@ internal readonly record struct FetchBody(
             .Put(0) // Throttle time
             .Put((short)ErrorCode.None) // Error code
             .Put(0) // Session id
-            .PutCompactArray(Array.Empty<byte>()) // There are no topics :D
-            .Put((byte)0); // Damned TAG_BUFFER
+            .Put(VarintDecoder.EncodeUnsignedVarint(Request.Topics?.Length + 1 ?? 0)); // Length of compact arr is an unsigned-varint
+        
+        for (var index = 0; index < (Request.Topics?.Length ?? 1); index++)
+        {
+            var request = Request.Topics![index];
+            var topics = MetadataLog.Batches.SelectMany(batch => batch.Records)
+                .Where(record => record.RecordValue.Type == ClusterMetadataLog.RecordValueType.Topic
+                    && record.RecordValue.Topic.Uuid.Span.SequenceEqual(request.TopicId.Span))
+                .ToArray();
+
+            if (topics.Length == 0)
+            {
+                stream
+                    // The topic_id field matches what was sent in the request.
+                    .Put(request.TopicId)
+                    // The partitions array has 1 element, and in that element:
+                    .Put(VarintDecoder.EncodeUnsignedVarint(2))
+                    // The partition_index field is 0.
+                    .Put(0)
+                    // The error_code field is 100 (UNKNOWN_TOPIC).
+                    .Put((short)ErrorCode.UnknownTopicId)
+                    //     high_watermark => INT64
+                    .Put((long)0)
+                    //     last_stable_offset => INT64
+                    .Put((long)0)
+                    //     log_start_offset => INT64
+                    .Put((long)0)
+                    //     aborted_transactions => producer_id first_offset TAG_BUFFER 
+                    .Put(VarintDecoder.EncodeUnsignedVarint(0))
+                    //      producer_id => INT64
+                    //      first_offset => INT64
+                    //     preferred_read_replica => INT32
+                    .Put(0)
+                    //     records => COMPACT_RECORDS
+                    .Put(VarintDecoder.EncodeUnsignedVarint(0))
+                    .Put((byte)0); // Damned TAG_BUFFER
+
+                // partitions => partition_index error_code high_watermark last_stable_offset log_start_offset [aborted_transactions] preferred_read_replica records TAG_BUFFER 
+                //     partition_index => INT32
+                //     error_code => INT16
+                //     high_watermark => INT64
+                //     last_stable_offset => INT64
+                //     log_start_offset => INT64
+                //     aborted_transactions => producer_id first_offset TAG_BUFFER 
+                //     producer_id => INT64
+                //     first_offset => INT64
+                //     preferred_read_replica => INT32
+                //     records => COMPACT_RECORDS
+            }
+            else
+            {
+                throw new NotImplementedException("We don't do actual fetchin' round 'ere boi");
+            }
+            
+            stream.Put((byte)0); // Damned TAG_BUFFER
+        }
+
+        stream.Put((byte)0); // Damned TAG_BUFFER
         
         return stream.ToArray();
     }
+
+    private readonly record struct Topic();
 }
