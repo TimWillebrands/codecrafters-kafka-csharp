@@ -184,48 +184,64 @@ internal readonly record struct FetchBody(
                     && record.RecordValue.Topic.Uuid.Span.SequenceEqual(request.TopicId.Span))
                 .ToArray();
 
-            if (topics.Length == 0)
+            switch (topics.Length)
             {
-                stream
-                    // The topic_id field matches what was sent in the request.
-                    .Put(request.TopicId)
-                    // The partitions array has 1 element, and in that element:
-                    .Put(VarintDecoder.EncodeUnsignedVarint(2))
-                    // The partition_index field is 0.
-                    .Put(0)
-                    // The error_code field is 100 (UNKNOWN_TOPIC).
-                    .Put((short)ErrorCode.UnknownTopicId)
-                    //     high_watermark => INT64
-                    .Put((long)0)
-                    //     last_stable_offset => INT64
-                    .Put((long)0)
-                    //     log_start_offset => INT64
-                    .Put((long)0)
-                    //     aborted_transactions => producer_id first_offset TAG_BUFFER 
-                    .Put(VarintDecoder.EncodeUnsignedVarint(0))
-                    //      producer_id => INT64
-                    //      first_offset => INT64
-                    //     preferred_read_replica => INT32
-                    .Put(0)
-                    //     records => COMPACT_RECORDS
-                    .Put(VarintDecoder.EncodeUnsignedVarint(0))
-                    .Put((byte)0); // Damned TAG_BUFFER
-
-                // partitions => partition_index error_code high_watermark last_stable_offset log_start_offset [aborted_transactions] preferred_read_replica records TAG_BUFFER 
-                //     partition_index => INT32
-                //     error_code => INT16
-                //     high_watermark => INT64
-                //     last_stable_offset => INT64
-                //     log_start_offset => INT64
-                //     aborted_transactions => producer_id first_offset TAG_BUFFER 
-                //     producer_id => INT64
-                //     first_offset => INT64
-                //     preferred_read_replica => INT32
-                //     records => COMPACT_RECORDS
-            }
-            else
-            {
-                throw new NotImplementedException("We don't do actual fetchin' round 'ere boi");
+                case 0:
+                    stream
+                        // The topic_id field matches what was sent in the request.
+                        .Put(request.TopicId)
+                        // The partitions array has 1 element, and in that element:
+                        .Put(VarintDecoder.EncodeUnsignedVarint(2))
+                        // The partition_index field is 0.
+                        .Put(0)
+                        // The error_code field is 100 (UNKNOWN_TOPIC).
+                        .Put((short)ErrorCode.UnknownTopicId)
+                        //     high_watermark => INT64
+                        .Put((long)0)
+                        //     last_stable_offset => INT64
+                        .Put((long)0)
+                        //     log_start_offset => INT64
+                        .Put((long)0)
+                        //     aborted_transactions => producer_id first_offset TAG_BUFFER 
+                        .Put(VarintDecoder.EncodeUnsignedVarint(0))
+                        //      producer_id => INT64
+                        //      first_offset => INT64
+                        //     preferred_read_replica => INT32
+                        .Put(0)
+                        //     records => COMPACT_RECORDS
+                        .Put(VarintDecoder.EncodeUnsignedVarint(0))
+                        .Put((byte)0); // Damned TAG_BUFFER
+                    break;
+                case 1:
+                    stream
+                        // The topic_id field matches what was sent in the request.
+                        .Put(request.TopicId)
+                        // The partitions array has 1 element, and in that element:
+                        .Put(VarintDecoder.EncodeUnsignedVarint(2))
+                        // The partition_index field is 0.
+                        .Put(0)
+                        // The error_code field is 100 (UNKNOWN_TOPIC).
+                        .Put((short)ErrorCode.None)
+                        //     high_watermark => INT64
+                        .Put((long)0)
+                        //     last_stable_offset => INT64
+                        .Put((long)0)
+                        //     log_start_offset => INT64
+                        .Put((long)0)
+                        //     aborted_transactions => producer_id first_offset TAG_BUFFER 
+                        .Put(VarintDecoder.EncodeUnsignedVarint(2))
+                        //      producer_id => INT64
+                        .Put((long)0)
+                        //      first_offset => INT64
+                        .Put((long)0)
+                        //     preferred_read_replica => INT32
+                        .Put(0)
+                        //     records => COMPACT_RECORDS
+                        .Put(VarintDecoder.EncodeUnsignedVarint(0))
+                        .Put((byte)0); // Damned TAG_BUFFER
+                    break;
+                case > 1:
+                    throw new NotSupportedException("I'm not entirely sure this is even valid, there are more than one topics of that id?");
             }
             
             stream.Put((byte)0); // Damned TAG_BUFFER
