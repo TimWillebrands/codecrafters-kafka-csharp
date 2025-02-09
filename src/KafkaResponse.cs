@@ -174,6 +174,7 @@ internal readonly record struct FetchBody(
             .Put(0) // Throttle time
             .Put((short)ErrorCode.None) // Error code
             .Put(0) // Session id
+            // responses => topic_id [partitions] TAG_BUFFER 
             .Put(VarintDecoder.EncodeUnsignedVarint(Request.Topics?.Length + 1 ?? 0)); // Length of compact arr is an unsigned-varint
         
         for (var index = 0; index < (Request.Topics?.Length ?? 1); index++)
@@ -184,65 +185,55 @@ internal readonly record struct FetchBody(
                     && record.RecordValue.Topic.Uuid.Span.SequenceEqual(request.TopicId.Span))
                 .ToArray();
 
-            switch (topics.Length)
+            if (topics.Length > 1)
             {
-                case 0:
-                    stream
-                        // The topic_id field matches what was sent in the request.
-                        .Put(request.TopicId)
-                        // The partitions array has 1 element, and in that element:
-                        .Put(VarintDecoder.EncodeUnsignedVarint(2))
-                        // The partition_index field is 0.
-                        .Put(0)
-                        // The error_code field is 100 (UNKNOWN_TOPIC).
-                        .Put((short)ErrorCode.UnknownTopicId)
-                        //     high_watermark => INT64
-                        .Put((long)0)
-                        //     last_stable_offset => INT64
-                        .Put((long)0)
-                        //     log_start_offset => INT64
-                        .Put((long)0)
-                        //     aborted_transactions => producer_id first_offset TAG_BUFFER 
-                        .Put(VarintDecoder.EncodeUnsignedVarint(0))
-                        //      producer_id => INT64
-                        //      first_offset => INT64
-                        //     preferred_read_replica => INT32
-                        .Put(0)
-                        //     records => COMPACT_RECORDS
-                        .Put(VarintDecoder.EncodeUnsignedVarint(0))
-                        .Put((byte)0); // Damned TAG_BUFFER
-                    break;
-                case 1:
-                    stream
-                        // The topic_id field matches what was sent in the request.
-                        .Put(request.TopicId)
-                        // The partitions array has 1 element, and in that element:
-                        .Put(VarintDecoder.EncodeUnsignedVarint(2))
-                        // The partition_index field is 0.
-                        .Put(0)
-                        // The error_code field is 100 (UNKNOWN_TOPIC).
-                        .Put((short)ErrorCode.None)
-                        //     high_watermark => INT64
-                        .Put((long)0)
-                        //     last_stable_offset => INT64
-                        .Put((long)0)
-                        //     log_start_offset => INT64
-                        .Put((long)0)
-                        //     aborted_transactions => producer_id first_offset TAG_BUFFER 
-                        .Put(VarintDecoder.EncodeUnsignedVarint(2))
-                        //      producer_id => INT64
-                        .Put((long)0)
-                        //      first_offset => INT64
-                        .Put((long)0)
-                        //     preferred_read_replica => INT32
-                        .Put(0)
-                        //     records => COMPACT_RECORDS
-                        .Put(VarintDecoder.EncodeUnsignedVarint(0))
-                        .Put((byte)0); // Damned TAG_BUFFER
-                    break;
-                case > 1:
-                    throw new NotSupportedException("I'm not entirely sure this is even valid, there are more than one topics of that id?");
+                throw new NotSupportedException("I'm not entirely sure this is even valid, there are more than one topics of that id?");
             }
+            
+            var errorCode = topics.Length != 0 ? ErrorCode.None : ErrorCode.UnknownTopicId;
+            
+            var partitions = MetadataLog.Batches.SelectMany(batch => batch.Records)
+                .Where(record => record.RecordValue.Type == ClusterMetadataLog.RecordValueType.Partition 
+                    && record.RecordValue.Partition.TopicUuid.Span.SequenceEqual(request.TopicId.Span))
+                .ToArray();
+
+            stream
+                // The topic_id field matches what was sent in the request.
+                .Put(request.TopicId)
+                // The partitions array has 1 element, and in that element:
+                // TODO: Deze code is denk ik te _DRY_, bij UNKNOWN_TOPIC is er geen
+                //       partition gevonden, maar we moeten er wel een returnen met
+                //       fixed values. Ik denk dat ik dit moet refactoren.
+                .Put(VarintDecoder.EncodeUnsignedVarint(Math.Max(2, partitions.Length + 1)))
+                // The partition_index field is 0.
+                .Put(0)
+                // The error_code field is 100 (UNKNOWN_TOPIC).
+                .Put((short)errorCode)
+                //     high_watermark => INT64
+                .Put((long)0)
+                //     last_stable_offset => INT64
+                .Put((long)0)
+                //     log_start_offset => INT64
+                .Put((long)0)
+                //     aborted_transactions => producer_id first_offset TAG_BUFFER 
+                .Put(VarintDecoder.EncodeUnsignedVarint(0))
+                //      producer_id => INT64
+                // .Put((long)0)
+                // //      first_offset => INT64
+                // .Put((long)0)
+                //     preferred_read_replica => INT32
+                .Put(0)
+                //     records => COMPACT_RECORDS
+                .Put(VarintDecoder.EncodeUnsignedVarint(partitions.Length + 1));
+            for (var i = 0; i < partitions.Length; i++)
+            {
+                Console.WriteLine($"Partition-{i}: {partitions[i].ToString()}");
+                var topicName = Encoding.UTF8.GetString(topics.FirstOrDefault().RecordValue.Topic.Name.Span);
+                // var partition = partitions[i];
+                stream.Put(ClusterMetadataLog.PartitionRaw(topicName, i.ToString()));
+            }
+
+            stream.Put((byte)0); // Damned TAG_BUFFER
             
             stream.Put((byte)0); // Damned TAG_BUFFER
         }

@@ -20,6 +20,9 @@ internal record ClusterMetadataLog
             Batches.Add(new RecordBatch(log, ref offset));
         }
     }
+    
+    internal static ReadOnlyMemory<byte> PartitionRaw(string topicName, string partitionId = "00000000000000000000") 
+        => File.ReadAllBytes($"/tmp/kraft-combined-logs/{topicName}-{partitionId}/00000000000000000000.log");
 
     internal readonly record struct RecordBatch(
         long BaseOffset,
