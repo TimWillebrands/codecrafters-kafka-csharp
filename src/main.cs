@@ -74,6 +74,7 @@ internal class Main
                                 new ApiVersionsBody(ErrorCode.None, [
                                     new ApiVersion(ApiKey.ApiVersions, 0, 4),
                                     new ApiVersion(ApiKey.DescribeTopicPartitions, 0, 0),
+                                    new ApiVersion(ApiKey.Fetch, 0, 16),
                                 ])),
                     DescribeTopicPartitionsReqBody req =>
                         new KafkaResponse<DescribeTopicPartitionsBody>(
