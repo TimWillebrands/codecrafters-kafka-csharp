@@ -169,10 +169,12 @@ internal readonly record struct FetchBody(
     {
         using var stream = new MemoryStream();
         stream
+            .Put((byte)0) // Damned TAG_BUFFER
             .Put(0) // Throttle time
             .Put((short)ErrorCode.None) // Error code
             .Put(0) // Session id
-            .Put(VarintDecoder.EncodeUnsignedVarint(1)); // responses Array length (0)
+            .PutCompactArray(Array.Empty<byte>()) // There are no topics :D
+            .Put((byte)0); // Damned TAG_BUFFER
         
         return stream.ToArray();
     }

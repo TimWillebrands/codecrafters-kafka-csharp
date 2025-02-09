@@ -96,8 +96,6 @@ internal readonly record struct FetchReqBody(
     RequestHeader Header, 
     ReadOnlyMemory<byte> ReadOnlyMemory) : IKafkaRequest
 {
-    public int MessageSize { get; }
-    public RequestHeader Header { get; }
 }
 
 internal static class ParseUtils {
