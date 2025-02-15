@@ -20,9 +20,53 @@ internal record ClusterMetadataLog
             Batches.Add(new RecordBatch(log, ref offset));
         }
     }
-    
-    internal static ReadOnlyMemory<byte> PartitionRaw(string topicName, string partitionId = "00000000000000000000") 
-        => File.ReadAllBytes($"/tmp/kraft-combined-logs/{topicName}-{partitionId}/00000000000000000000.log");
+
+    internal static List<RecordBatch> ReadPartitionRecords(string topicName, string partitionId = "0")
+    {
+        var path = $"/tmp/kraft-combined-logs/{topicName}-{partitionId}/00000000000000000000.log";
+        var log = File.ReadAllBytes(path).AsMemory();
+        var batches = new List<RecordBatch>();
+        
+        var offset = 0;
+        while (offset < log.Length)
+        {
+            batches.Add(new RecordBatch(log, ref offset));
+        }
+        
+        return batches;
+    }
+
+    internal static List<ReadOnlyMemory<byte>> ReadPartitionRecordsRaw(string topicName, string partitionId)
+    {
+        var path = $"/tmp/kraft-combined-logs/{topicName}-{partitionId}/00000000000000000000.log";
+        var logData = File.ReadAllBytes(path).AsMemory();
+        List<ReadOnlyMemory<byte>> records = [];
+        var i = 0;
+        
+        while (i <= logData.Length - 1)
+        {
+            if (i + 12 > logData.Length) // Check for boundary condition before reading length
+            {
+                break; // Avoid reading past the end of the buffer
+            }
+            var messageSize = (int)BinaryPrimitives.ReadUInt32BigEndian(logData.Slice(i + 8, 4).Span);
+            var totalMessageLength = 12 + messageSize; // **Keep the + 12, based on Go code**
+
+            if (i + totalMessageLength > logData.Length) // Boundary check before slicing
+            {
+                Console.WriteLine($"Warning: Incomplete record at offset {i}, stopping.");
+                break; // Incomplete record, stop reading
+            }
+
+            Console.WriteLine($"{topicName}-{partitionId} | i: {i}, message length: {messageSize}, total message length: {totalMessageLength}");
+            var messageContent = logData.Slice(i, totalMessageLength); // Slice with totalMessageLength
+            i += totalMessageLength;
+
+            records.Add(messageContent);
+        }
+
+        return records;
+    }
 
     internal readonly record struct RecordBatch(
         long BaseOffset,
@@ -116,16 +160,18 @@ internal record ClusterMetadataLog
                 ReadInt16(memory[end..], ref offset));
         }}
 
-        internal (ReadOnlyMemory<byte> Name, ReadOnlyMemory<byte> Uuid) Topic { get  {
-            if(Type != RecordValueType.Topic) throw new InvalidOperationException();
-            var (v, varIntLen) = VarintDecoder.ReadUnsignedVarint(memory.Span[3..]);
-            var value = v - 1;
-            var start = 3 + varIntLen;
-            var end = start + value;
-            var name = memory[start..end];
-            var uuid = memory[end..(end + 16)];
-            return (name, uuid);
-        }}
+        internal (ReadOnlyMemory<byte> Name, ReadOnlyMemory<byte> Uuid) Topic { 
+            get  {
+                if(Type != RecordValueType.Topic) throw new InvalidOperationException();
+                var (v, varIntLen) = VarintDecoder.ReadUnsignedVarint(memory.Span[3..]);
+                var value = v - 1;
+                var start = 3 + varIntLen;
+                var end = start + value;
+                var name = memory[start..end];
+                var uuid = memory[end..(end + 16)];
+                return (name, uuid);
+            }
+        }
 
         // TODO: -1 for empty or null arrays?
         internal ReadOnlyMemory<byte> ReadCompactArray(ref int offset)

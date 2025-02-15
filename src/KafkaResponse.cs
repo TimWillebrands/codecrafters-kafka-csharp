@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Linq;
 
 namespace CodecraftersKafka;
 
@@ -91,7 +90,7 @@ internal readonly record struct DescribeTopicPartitionsBody(
 
         stream.Put((byte)0) // Suddenly the header has a TAG_BUFFER?
             .Put(0) // Throttle time
-            .Put(VarintDecoder.EncodeUnsignedVarint(topicLength + 1)); // Array length (1)
+            .Put(VarintDecoder.EncodeUnsignedVarint((uint)topicLength + 1)); // Array length (1)
         
         var errorCode = topics.Length != 0 ? ErrorCode.None : ErrorCode.UnknownTopicOrPartition;
 
@@ -129,7 +128,7 @@ internal readonly record struct DescribeTopicPartitionsBody(
             
         stream
             .Put((short)errorCode)
-            .Put(VarintDecoder.EncodeUnsignedVarint(topicName.Length + 1)); // Lenght of topicname + 1, as 0 means null
+            .Put(VarintDecoder.EncodeUnsignedVarint((uint)topicName.Length + 1)); // Lenght of topicname + 1, as 0 means null
         
         stream.Write(topicName.Span); // Topic name
         stream.Write(topicUuid.Span); // Topic Uuid
@@ -137,14 +136,10 @@ internal readonly record struct DescribeTopicPartitionsBody(
         stream.Put((byte)0) // Is internal
             .Put((byte)(partitions.Length+1)); // Positions length (0)
         
-        Console.WriteLine($"Partition length: {partitions.Length}");
-
-        var partId = 0;
         foreach (var partition in partitions)
         {
             var partitionRec = partition.RecordValue.Partition;
-            Console.WriteLine($"Partition-{partId++}: {partitionRec.ToString()}");
-            Console.WriteLine($"Replica nodes: {string.Join(',',partitionRec.ReplicaNodes)}");
+            
             stream.Put((short)ErrorCode.None) // Errorcode
                 .Put(partitionRec.PartitionId) // Partition Index
                 .Put(partitionRec.Leader) // Leader ID
@@ -175,7 +170,7 @@ internal readonly record struct FetchBody(
             .Put((short)ErrorCode.None) // Error code
             .Put(0) // Session id
             // responses => topic_id [partitions] TAG_BUFFER 
-            .Put(VarintDecoder.EncodeUnsignedVarint(Request.Topics?.Length + 1 ?? 0)); // Length of compact arr is an unsigned-varint
+            .Put(VarintDecoder.EncodeUnsignedVarint((uint)(Request.Topics?.Length + 1 ?? 0))); // Length of compact arr is an unsigned-varint
         
         for (var index = 0; index < (Request.Topics?.Length ?? 1); index++)
         {
@@ -192,19 +187,22 @@ internal readonly record struct FetchBody(
             
             var errorCode = topics.Length != 0 ? ErrorCode.None : ErrorCode.UnknownTopicId;
             
-            var partitions = MetadataLog.Batches.SelectMany(batch => batch.Records)
-                .Where(record => record.RecordValue.Type == ClusterMetadataLog.RecordValueType.Partition 
-                    && record.RecordValue.Partition.TopicUuid.Span.SequenceEqual(request.TopicId.Span))
-                .ToArray();
+            var partitions = MetadataLog.Batches
+                .SelectMany(batch => batch.Records)
+                .FirstOrDefault(record => record.RecordValue.Type == ClusterMetadataLog.RecordValueType.Partition 
+                                          && record.RecordValue.Partition.TopicUuid.Span.SequenceEqual(request.TopicId.Span));
 
             stream
                 // The topic_id field matches what was sent in the request.
                 .Put(request.TopicId)
-                // The partitions array has 1 element, and in that element:
+                // The partitions array length
                 // TODO: Deze code is denk ik te _DRY_, bij UNKNOWN_TOPIC is er geen
                 //       partition gevonden, maar we moeten er wel een returnen met
                 //       fixed values. Ik denk dat ik dit moet refactoren.
-                .Put(VarintDecoder.EncodeUnsignedVarint(Math.Max(2, partitions.Length + 1)))
+                .Put(VarintDecoder.EncodeUnsignedVarint(2));
+            
+            stream
+                // var partition = partitions[i];
                 // The partition_index field is 0.
                 .Put(0)
                 // The error_code field is 100 (UNKNOWN_TOPIC).
@@ -217,31 +215,43 @@ internal readonly record struct FetchBody(
                 .Put((long)0)
                 //     aborted_transactions => producer_id first_offset TAG_BUFFER 
                 .Put(VarintDecoder.EncodeUnsignedVarint(0))
-                //      producer_id => INT64
-                // .Put((long)0)
-                // //      first_offset => INT64
-                // .Put((long)0)
                 //     preferred_read_replica => INT32
-                .Put(0)
-                //     records => COMPACT_RECORDS
-                .Put(VarintDecoder.EncodeUnsignedVarint(partitions.Length + 1));
-            for (var i = 0; i < partitions.Length; i++)
-            {
-                Console.WriteLine($"Partition-{i}: {partitions[i].ToString()}");
-                var topicName = Encoding.UTF8.GetString(topics.FirstOrDefault().RecordValue.Topic.Name.Span);
-                // var partition = partitions[i];
-                stream.Put(ClusterMetadataLog.PartitionRaw(topicName, i.ToString()));
-            }
+                .Put(-1);
 
+            if (topics.Length > 0)
+            {
+                var topicName = Encoding.UTF8.GetString(topics.FirstOrDefault().RecordValue.Topic.Name.Span);
+                var recordBatchesRaw = ClusterMetadataLog.ReadPartitionRecordsRaw(topicName, "0");
+                var recordBatches = ClusterMetadataLog.ReadPartitionRecords(topicName, "0");
+                
+                // Create a temporary stream to hold the record batches
+                using var recordsStream = new MemoryStream();
+                foreach (var recordBatchRaw in recordBatchesRaw)
+                {
+                    recordsStream.Write(recordBatchRaw.Span);
+                }
+
+                // Get the total length of the serialized record batches
+                // var recordsLength = (uint) recordsStream.Length;
+                var recordsLength = (uint) recordBatches.Aggregate(1, (agg, batch) => agg + batch.BatchLength);
+
+                // Write the records_length (as varint) to the main stream
+                stream.Put(VarintDecoder.EncodeUnsignedVarint(recordsLength));
+
+                // Write the record batches from the temporary stream to the main stream
+                recordsStream.Position = 0; // Reset stream position to the beginning
+                recordsStream.CopyTo(stream);
+
+            }
+            else
+            {
+                stream.Put((byte)0); // Damned TAG_BUFFER
+            }
             stream.Put((byte)0); // Damned TAG_BUFFER
-            
             stream.Put((byte)0); // Damned TAG_BUFFER
         }
-
         stream.Put((byte)0); // Damned TAG_BUFFER
         
         return stream.ToArray();
     }
-
-    private readonly record struct Topic();
 }

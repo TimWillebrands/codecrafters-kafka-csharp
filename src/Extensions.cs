@@ -55,10 +55,9 @@ internal static class Extensions
     
     internal static MemoryStream PutCompactArray(this MemoryStream ms, ReadOnlyMemory<byte> value)
     {
-        ms
-            .Put(VarintDecoder.EncodeUnsignedVarint(value.Length)) // Length of compact arr is an unsigned-varint
+        return ms
+            .Put(VarintDecoder.EncodeUnsignedVarint((uint)value.Length)) // Length of compact arr is an unsigned-varint
             .Put(value);
-        return ms;
     }
     
     internal static MemoryStream Put(this MemoryStream ms, ReadOnlyMemory<byte> value)

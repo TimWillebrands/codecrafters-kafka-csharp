@@ -77,13 +77,14 @@ public static class VarintDecoder
         return new InvalidOperationException($"Illegal varint value: {result}");
     }
     
-    public static byte[] EncodeUnsignedVarint(int value)
+    public static byte[] EncodeSignedVarint(int value)
     {
-        if (value < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(value), "Value must be non-negative for UNSIGNED_VARINT.");
-        }
-
+        var ziggityZaggity = (uint)((value << 1) ^ (value >> 31));
+        return EncodeUnsignedVarint(ziggityZaggity);
+    }
+    
+    public static byte[] EncodeUnsignedVarint(uint value)
+    {
         var bytes = new List<byte>();
         while (value >= 128)
         {
